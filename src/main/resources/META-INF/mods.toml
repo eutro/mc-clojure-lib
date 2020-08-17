@@ -1,8 +1,8 @@
 modLoader="javafml"
 loaderVersion="[31,)"
+license="EPL"
 [[mods]]
 modId="clojurelib"
 version="${file.jarVersion}"
 displayName="Clojure Lib"
 description='''Literally just shades Clojure.'''
-license="EPL"
