@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "clojurelib",
+  "version": "${version}",
+
+  "name": "Clojure Lib",
+  "description": "Literally just shades Clojure.",
+
+  "license": "EPL"
+}
