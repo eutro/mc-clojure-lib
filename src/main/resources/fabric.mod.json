@@ -6,5 +6,11 @@
   "name": "Clojure Lib",
   "description": "Literally just shades Clojure.",
 
-  "license": "EPL"
+  "license": "EPL",
+
+  "entrypoints": {
+    "main": [
+      "eutros.clojurelib.fabric.clojure_lib_init_fabric"
+    ]
+  }
 }
