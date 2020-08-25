@@ -204,6 +204,9 @@
                                               (.-desc method-node))
                         instructions (.-instructions method-node)]
 
+                    (dotimes [i (count params)]
+                      (add-annotations method-node (meta (nth params i)) i))
+
                     (doseq [param params]
                       (.visitParameter method-node (name param) 0))
 
