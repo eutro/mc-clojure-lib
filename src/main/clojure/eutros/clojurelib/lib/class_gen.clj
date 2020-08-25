@@ -48,7 +48,7 @@
               (into-array Class (map class-from-internal (.interfaces node)))))
 
 (defn- ^String munged [obj]
-  (Compiler/munge obj))
+  (Compiler/munge (str obj)))
 
 (defn- extra-munged [obj]
   (-> obj munged
@@ -166,7 +166,9 @@
             Opcodes/V1_5
             (+ Opcodes/ACC_PUBLIC
                Opcodes/ACC_SUPER
-               (if (get :final class-meta) Opcodes/ACC_FINAL 0))
+               (cond (get class-meta :abstract) Opcodes/ACC_ABSTRACT
+                     (get class-meta :final) Opcodes/ACC_FINAL
+                     :else 0))
             int-cname
             nil
             (.getInternalName obj-type)
@@ -196,7 +198,9 @@
                                metadata (merge (meta field-symbol) (meta form))
                                field-name (munged (str field-symbol))]
                            (.add (.-fields node)
-                                 (doto (FieldNode. (+ Opcodes/ACC_PUBLIC
+                                 (doto (FieldNode. (+ (cond (get metadata :private) Opcodes/ACC_PRIVATE
+                                                            (get metadata :protected) Opcodes/ACC_PROTECTED
+                                                            :else Opcodes/ACC_PUBLIC)
                                                       (if (get metadata :static) Opcodes/ACC_STATIC 0)
                                                       (if (get metadata :final) Opcodes/ACC_FINAL 0))
                                                    field-name
@@ -212,12 +216,14 @@
                                 ret-class (tag-class (get (meta method-symbol) :tag 'void))
                                 p-classes (map get-type-hint params)
                                 static (get metadata :static)
+                                abstract (get metadata :abstract)
 
                                 method-name (munged (name method-symbol))
                                 method-node (MethodNode. (+ (cond (get metadata :private) Opcodes/ACC_PRIVATE
-                                                                  (get metadata :protected) Opcodes/ACC_PRIVATE
+                                                                  (get metadata :protected) Opcodes/ACC_PROTECTED
                                                                   :else Opcodes/ACC_PUBLIC)
                                                             (if static Opcodes/ACC_STATIC 0)
+                                                            (if abstract Opcodes/ACC_ABSTRACT 0)
                                                             (if (get metadata :final) Opcodes/ACC_FINAL 0))
                                                          method-name
                                                          (method-desc ret-class (map get-type-hint params))
@@ -240,48 +246,49 @@
                             (doseq [param params]
                               (.visitParameter method-node (name param) 0))
 
-                            (.add (.-fields node)
-                                  (FieldNode. (+ Opcodes/ACC_PUBLIC
-                                                 Opcodes/ACC_STATIC)
-                                              field-name
-                                              IFN_DESC
-                                              nil
-                                              nil))
-
-                            (.add instructions
-                                  (FieldInsnNode. Opcodes/GETSTATIC
-                                                  int-cname
-                                                  field-name
-                                                  IFN_DESC))
-                            (when-not static
-                              (.add instructions
-                                    (VarInsnNode. Opcodes/ALOAD 0)))
-
-                            (load-args-boxed ga p-classes)
-
-                            (.add instructions (invoke-ifn-node ((if static identity inc)
-                                                                 (count p-classes))))
-
-                            (when (= ret-class Void/TYPE)
-                              (.add instructions (InsnNode. Opcodes/POP)))
-
-                            (doto ga
-                              (.unbox (to-type ret-class))
-                              (.returnValue))
-
                             (add-annotations method-node metadata)
 
                             (.add (.-methods node) method-node)
 
-                            `(set! (. ~top-name ~(symbol field-name))
-                                   ~(cons 'fn
-                                          (cons (let [p-seq (map fn-hint-safe params)]
-                                                  (if static
-                                                    (apply vector p-seq)
-                                                    (apply vector
-                                                           (with-meta 'this {:tag top-name})
-                                                           p-seq)))
-                                                body))))
+                            (when-not abstract
+                              (.add (.-fields node)
+                                    (FieldNode. (+ Opcodes/ACC_PUBLIC
+                                                   Opcodes/ACC_STATIC)
+                                                field-name
+                                                IFN_DESC
+                                                nil
+                                                nil))
+
+                              (.add instructions
+                                    (FieldInsnNode. Opcodes/GETSTATIC
+                                                    int-cname
+                                                    field-name
+                                                    IFN_DESC))
+                              (when-not static
+                                (.add instructions
+                                      (VarInsnNode. Opcodes/ALOAD 0)))
+
+                              (load-args-boxed ga p-classes)
+
+                              (.add instructions (invoke-ifn-node ((if static identity inc)
+                                                                   (count p-classes))))
+
+                              (when (= ret-class Void/TYPE)
+                                (.add instructions (InsnNode. Opcodes/POP)))
+
+                              (doto ga
+                                (.unbox (to-type ret-class))
+                                (.returnValue))
+
+                              `(set! (. ~top-name ~(symbol field-name))
+                                     ~(cons 'fn
+                                            (cons (let [p-seq (map fn-hint-safe params)]
+                                                    (if static
+                                                      (apply vector p-seq)
+                                                      (apply vector
+                                                             (with-meta 'this {:tag top-name})
+                                                             p-seq)))
+                                                  body)))))
 
                   :constructor (let [[params & forms] form-next
                                      p-classes (map get-type-hint params)
@@ -422,12 +429,14 @@
       (make-trusted)))
 
 (defn get-this-class [env]
-  (.getJavaClass ^Compiler$LocalBinding (env 'this)))
+  (let [this-binding (env 'this)]
+    (assert this-binding "'this is unbound!")
+    (.getJavaClass ^Compiler$LocalBinding this-binding)))
 
 (defn handle-invoker
   [handle args metadata]
   (with-meta `(.invokeWithArguments ^MethodHandle (deref ~(intern *ns* (gensym "handle") handle))
-                                    ^objects (into-array ~args))
+                                    (into-array ~args))
              metadata))
 
 (defmacro call-super
@@ -437,12 +446,12 @@
                         (meta method))]
     (handle-invoker (-> (handle-in this-class)
                         (.findSpecial (.getSuperclass this-class)
-                                      (str method)
+                                      (munged method)
                                       (MethodType/methodType (hint-from metadata)
                                                              (into-array Class
                                                                          (map get-type-hint args)))
                                       this-class))
-                    `(cons ~'this ~args)
+                    (apply vector 'this args)
                     metadata)))
 
 (defmacro call-protected
@@ -452,25 +461,25 @@
                         (meta method))]
     (handle-invoker (-> (handle-in this-class)
                         (.findVirtual this-class
-                                      (str method)
+                                      (munged method)
                                       (MethodType/methodType (hint-from metadata)
                                                              (into-array Class
                                                                          (map get-type-hint args)))))
-                    `(cons ~'this ~args)
+                    (apply vector 'this args)
                     metadata)))
 
 (defmacro call-protected-static
-  [method & args]
-  (let [this-class (get-this-class &env)
+  [c method & args]
+  (let [this-class (eval c)
         metadata (merge (meta &form)
                         (meta method))]
     (handle-invoker (-> (handle-in this-class)
                         (.findStatic this-class
-                                     (str method)
+                                     (munged method)
                                      (MethodType/methodType (hint-from metadata)
                                                             (into-array Class
                                                                         (map get-type-hint args)))))
-                    args
+                    (apply vector args)
                     metadata)))
 
 (defmacro get-protected
@@ -480,7 +489,7 @@
                         (meta field))]
     (handle-invoker (-> (handle-in this-class)
                         (.findGetter this-class
-                                     (str field)
+                                     (munged field)
                                      (hint-from metadata)))
                     []
                     metadata)))
@@ -492,31 +501,31 @@
                         (meta field))]
     (handle-invoker (-> (handle-in this-class)
                         (.findSetter this-class
-                                     (str field)
+                                     (munged field)
                                      (hint-from metadata)))
                     [val]
                     metadata)))
 
 (defmacro get-protected-static
-  [field]
-  (let [this-class (get-this-class &env)
+  [c field]
+  (let [this-class (eval c)
         metadata (merge (meta &form)
                         (meta field))]
     (handle-invoker (-> (handle-in this-class)
                         (.findStaticGetter this-class
-                                           (str field)
+                                           (munged field)
                                            (hint-from metadata)))
                     []
                     metadata)))
 
 (defmacro set-protected-static
-  [field val]
-  (let [this-class (get-this-class &env)
+  [c field val]
+  (let [this-class (eval c)
         metadata (merge (meta &form)
                         (meta field))]
     (handle-invoker (-> (handle-in this-class)
                         (.findStaticSetter this-class
-                                           (str field)
+                                           (munged field)
                                            (hint-from metadata)))
                     [val]
                     metadata)))
