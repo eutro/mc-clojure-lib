@@ -25,7 +25,7 @@
     (.visitSource node *file* *file*)
 
     (.add (.-interfaces node)
-          "net.fabricmc.api.ModInitializer")
+          "net/fabricmc/api/ModInitializer")
 
     (.add (.-methods node)
           (let [method (MethodNode. Opcodes/ACC_PUBLIC
@@ -80,7 +80,7 @@
                                      (Type/getInternalName Clojure)
                                      "var" (Type/getMethodDescriptor (Type/getType ^Class IFn)
                                                                      (into-array [obj-type]))))
-              (.add (LdcInsnNode. "/eutros/clojurelib/forge/fabric_core"))
+              (.add (LdcInsnNode. "/eutros/clojurelib/fabric/fabric_core"))
               (.add (MethodInsnNode. Opcodes/INVOKEINTERFACE
                                      (Type/getInternalName IFn)
                                      "invoke" (Type/getMethodDescriptor obj-type
