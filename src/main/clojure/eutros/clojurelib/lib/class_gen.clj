@@ -4,8 +4,9 @@
                     DataOutputStream
                     File)
            (org.objectweb.asm ClassWriter Opcodes Type AnnotationVisitor)
-           (org.objectweb.asm.tree ClassNode FieldNode MethodNode VarInsnNode FieldInsnNode MethodInsnNode InsnNode)
-           (clojure.lang IFn Symbol)
+           (org.objectweb.asm.tree ClassNode FieldNode MethodNode VarInsnNode
+                                   FieldInsnNode MethodInsnNode InsnNode)
+           (clojure.lang IFn Symbol RT)
            (org.objectweb.asm.commons GeneratorAdapter)
            (java.lang.annotation Annotation Retention RetentionPolicy)
            (java.lang.reflect Modifier))
@@ -121,6 +122,33 @@
              (process-annotation av v)
              (.visitEnd av))))))))
 
+(def OBJECT_DESC (descriptor Object))
+(def IFN_TYPE (to-type IFn))
+(def IFN_DESC (descriptor IFn))
+
+(defn- ^MethodInsnNode invoke-ifn-node [param-count]
+  (MethodInsnNode. Opcodes/INVOKEINTERFACE
+                   (.getInternalName IFN_TYPE)
+                   "invoke"
+                   (str "("
+                        (apply str
+                               (repeat (min param-count 20) OBJECT_DESC))
+                        (when (> param-count 20)
+                          (str "[" OBJECT_DESC))
+                        ")" OBJECT_DESC)))
+
+(defn- method-desc [ret args]
+  (Type/getMethodDescriptor (to-type ret)
+                            (into-array Type (map to-type args))))
+
+(defn- load-args-boxed
+  [^GeneratorAdapter ga p-classes]
+  ;; breaks with too many args
+  (dotimes [i (count p-classes)]
+    (let [param-type (to-type (nth p-classes i))]
+      (.loadArg ga i)
+      (.valueOf ga param-type))))
+
 (defmacro defclass
   [^Symbol top-name & forms]
   (let [class-meta (meta top-name)
@@ -129,7 +157,6 @@
         int-cname (.replace cname \. \/)
 
         obj-type (to-type Object)
-        ifn-desc (descriptor IFn)
 
         node (ClassNode.)
 
@@ -192,9 +219,7 @@
                                                             (if static Opcodes/ACC_STATIC 0)
                                                             (if (get metadata :final) Opcodes/ACC_FINAL 0))
                                                          method-name
-                                                         (Type/getMethodDescriptor (to-type ret-class)
-                                                                                   (into-array Type (map #(-> ^Class (get-type-hint %)
-                                                                                                              (to-type)) params)))
+                                                         (method-desc ret-class (map get-type-hint params))
                                                          nil ;; TODO generics
                                                          (make-array String 0))
 
@@ -218,7 +243,7 @@
                                   (FieldNode. (+ Opcodes/ACC_PUBLIC
                                                  Opcodes/ACC_STATIC)
                                               field-name
-                                              ifn-desc
+                                              IFN_DESC
                                               nil
                                               nil))
 
@@ -226,28 +251,15 @@
                                   (FieldInsnNode. Opcodes/GETSTATIC
                                                   int-cname
                                                   field-name
-                                                  ifn-desc))
+                                                  IFN_DESC))
                             (when-not static
                               (.add instructions
                                     (VarInsnNode. Opcodes/ALOAD 0)))
 
-                            ;; breaks with more than 19 arguments...
-                            (dotimes [i (count p-classes)]
-                              (let [param-type (to-type (nth p-classes i))]
-                                (.loadArg ga i)
-                                (.valueOf ga param-type)))
+                            (load-args-boxed ga p-classes)
 
-                            (.add instructions
-                                  (MethodInsnNode. Opcodes/INVOKEINTERFACE
-                                                   (Type/getInternalName IFn)
-                                                   "invoke"
-                                                   (Type/getMethodDescriptor obj-type
-                                                                             (into-array Type
-                                                                                         (repeat ((if static
-                                                                                                    identity
-                                                                                                    inc)
-                                                                                                  (count p-classes))
-                                                                                                 obj-type)))))
+                            (.add instructions (invoke-ifn-node ((if static identity inc)
+                                                                 (count p-classes))))
 
                             (when (= ret-class Void/TYPE)
                               (.add instructions (InsnNode. Opcodes/POP)))
@@ -267,14 +279,17 @@
                                                     (apply vector p-seq)
                                                     (apply vector
                                                            (with-meta 'this {:tag top-name})
-                                                            p-seq)))
+                                                           p-seq)))
                                                 body))))
 
                   :constructor (let [[params & forms] form-next
-                                     p-types (map (fn [param]
-                                                    (-> ^Class (get-type-hint param)
-                                                        (to-type)))
-                                                  params)
+                                     p-classes (map get-type-hint params)
+
+                                     constructor-desc (method-desc Void/TYPE p-classes)
+                                     method-node (MethodNode. Opcodes/ACC_PUBLIC
+                                                              "<init>"
+                                                              constructor-desc
+                                                              nil (make-array String 0))
 
                                      super-class (class-from-internal (.-superName node))
 
@@ -284,20 +299,32 @@
                                                            (if (= (first super-candidate)
                                                                   'super)
                                                              [super-candidate rest]
-                                                             [(list 'super params) forms])))
+                                                             ['(super []) forms])))
 
-                                     fn-params (map fn-hint-safe params)
+                                     fn-params (vec (map fn-hint-safe params))
 
+                                     pre-field (FieldNode. (+ Opcodes/ACC_PUBLIC
+                                                              Opcodes/ACC_STATIC)
+                                                           (str "constructor$pre$"
+                                                                (extra-munged constructor-desc))
+                                                           IFN_DESC nil nil)
                                      pre-fn `(fn ~fn-params ~@(next super-call))
-                                     post-fn `(fn ~(cons (with-meta 'this {:tag top-name})
-                                                         fn-params)
+
+                                     post-field (FieldNode. (+ Opcodes/ACC_PUBLIC
+                                                               Opcodes/ACC_STATIC)
+                                                            (str "constructor$post$"
+                                                                 (extra-munged constructor-desc))
+                                                            IFN_DESC nil nil)
+                                     post-fn `(fn ~(apply vector
+                                                          (with-meta 'this {:tag top-name})
+                                                          fn-params)
                                                 ~@body)
 
                                      super-call-classes
                                      (do (assert (vector? (second super-call))
                                                  "Second entry of super constructor call is not a vector!")
                                          (if (> (count super-call) 2)
-                                           (second super-call)
+                                           (map eval (second super-call))
                                            (map get-type-hint (second super-call))))
 
                                      reflected-constructor
@@ -310,28 +337,67 @@
                                                "Constructor is private!")
                                        ctr)
 
-                                     method-desc (Type/getMethodDescriptor Type/VOID_TYPE
-                                                                           (into-array Type p-types))
-                                     method-node (MethodNode. Opcodes/ACC_PUBLIC
-                                                              "<init>"
-                                                              method-desc
-                                                              nil (make-array String 0))
-                                     instructions (.-instructions method-node)]
+                                     instructions (.-instructions method-node)
 
-                                 (.add instructions (VarInsnNode. Opcodes/ALOAD 0))
+                                     ga (GeneratorAdapter. method-node
+                                                           (.-access method-node)
+                                                           (.-name method-node)
+                                                           (.-desc method-node))
 
-                                 (.add instructions (MethodInsnNode. Opcodes/INVOKESPECIAL
-                                                                     (.-superName node)
-                                                                     "<init>"
-                                                                     (Type/getConstructorDescriptor reflected-constructor)))
+                                     pre-local (.newLocal ga obj-type)]
 
-                                 (.add instructions (InsnNode. Opcodes/RETURN))
+                                 (doto (.-fields node)
+                                   (.add pre-field)
+                                   (.add post-field))
+
+                                 (doto instructions
+                                   (.add (VarInsnNode. Opcodes/ALOAD 0))
+                                   (.add (FieldInsnNode. Opcodes/GETSTATIC
+                                                         int-cname
+                                                         (.-name pre-field)
+                                                         (.-desc pre-field))))
+
+                                 (load-args-boxed ga p-classes)
+
+                                 (.add instructions (invoke-ifn-node (count p-classes)))
+                                 (.storeLocal ga pre-local obj-type)
+
+                                 (dotimes [i (count super-call-classes)]
+                                   (.loadLocal ga pre-local obj-type)
+                                   (.push ga (int i))
+                                   (.add instructions (MethodInsnNode. Opcodes/INVOKESTATIC
+                                                                       (Type/getInternalName RT)
+                                                                       "nth"
+                                                                       (method-desc Object [Object Integer/TYPE])))
+                                   (.unbox ga (to-type (nth super-call-classes i))))
+
+                                 (doto instructions
+                                   (.add (MethodInsnNode. Opcodes/INVOKESPECIAL
+                                                          (.-superName node)
+                                                          "<init>"
+                                                          (Type/getConstructorDescriptor reflected-constructor)))
+                                   (.add (FieldInsnNode. Opcodes/GETSTATIC
+                                                         int-cname
+                                                         (.-name post-field)
+                                                         (.-desc post-field))))
+
+                                 (.loadThis ga)
+                                 (load-args-boxed ga p-classes)
+
+                                 (doto instructions
+                                   (.add (invoke-ifn-node (inc (count p-classes))))
+                                   (.add (InsnNode. Opcodes/POP))
+                                   (.add (InsnNode. Opcodes/RETURN)))
 
                                  (.add (.-methods node)
                                        method-node)
 
                                  (add-annotations method-node (meta form))
-                                 nil)
+
+                                 `(do (set! (. ~top-name ~(symbol (.-name pre-field)))
+                                            ~pre-fn)
+                                      (set! (. ~top-name ~(symbol (.-name post-field)))
+                                            ~post-fn)))
 
                   ))))
 
