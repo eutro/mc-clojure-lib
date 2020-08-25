@@ -133,3 +133,11 @@ processResources {
         exclude "fabric.mod.json"
     }
 }
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+        }
+    }
+}
