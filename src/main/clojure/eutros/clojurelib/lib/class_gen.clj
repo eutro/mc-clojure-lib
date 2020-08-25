@@ -3,10 +3,11 @@
            (java.io FileOutputStream
                     DataOutputStream
                     File)
-           (org.objectweb.asm ClassWriter Opcodes Type)
+           (org.objectweb.asm ClassWriter Opcodes Type AnnotationVisitor)
            (org.objectweb.asm.tree ClassNode FieldNode MethodNode VarInsnNode FieldInsnNode MethodInsnNode InsnNode)
            (clojure.lang IFn Symbol)
-           (org.objectweb.asm.commons GeneratorAdapter))
+           (org.objectweb.asm.commons GeneratorAdapter)
+           (java.lang.annotation Annotation Retention RetentionPolicy))
   (:use eutros.clojurelib.lib.core
         eutros.clojurelib.lib.type-hints))
 
@@ -52,14 +53,82 @@
       (.replace "(" "_LPAREN_")
       (.replace ")" "_RPAREN_")))
 
+(defn- is-annotation? [c]
+  (and (class? c)
+       (.isAssignableFrom Annotation c)))
+
+(defn descriptor [^Class c]
+  (Type/getDescriptor c))
+
+(defn to-type [^Class c]
+  (Type/getType c))
+
+(defn- is-runtime-annotation?
+  "Copied from core."
+  [^Class c]
+  (boolean
+    (and (is-annotation? c)
+         (when-let [^Retention r
+                    (.getAnnotation c Retention)]
+           (= (.value r) RetentionPolicy/RUNTIME)))))
+
+(declare process-annotation)
+(defn- add-annotation
+  "Copied from core."
+  [^AnnotationVisitor av name v]
+  (cond
+    (vector? v) (let [avec (.visitArray av name)]
+                  (doseq [vval v]
+                    (add-annotation avec "value" vval))
+                  (.visitEnd avec))
+    (symbol? v) (let [ev (eval v)]
+                  (cond
+                    (instance? Enum ev)
+                    (.visitEnum av name (descriptor (class ev)) (str ev))
+                    (class? ev) (.visit av name (to-type ev))
+                    :else (throw (IllegalArgumentException.
+                                   (str "Unsupported annotation value: " v " of class " (class ev))))))
+    (seq? v) (let [[nested nv] v
+                   c (resolve nested)
+                   nav (.visitAnnotation av name (descriptor c))]
+               (process-annotation nav nv)
+               (.visitEnd nav))
+    :else (.visit av name v)))
+
+(defn- process-annotation
+  "Copied from core."
+  [av v]
+  (if (map? v)
+    (doseq [[k v] v]
+      (add-annotation av (name k) v))
+    (add-annotation av "value" v)))
+
+(defn- add-annotations
+  "Copied from core."
+  ([visitor m] (add-annotations visitor m nil))
+  ([visitor metadata param-no]
+   (doseq [[k v] metadata]
+     (when (symbol? k)
+       (when-let [c (resolve k)]
+         (when (is-annotation? c)
+           (let [av (binding [*warn-on-reflection* false]   ;; this is known duck/reflective as no common base of ASM Visitors
+                      (if param-no
+                        (.visitParameterAnnotation visitor param-no (descriptor c)
+                                                   (is-runtime-annotation? c))
+                        (.visitAnnotation visitor (descriptor c)
+                                          (is-runtime-annotation? c))))]
+             (process-annotation av v)
+             (.visitEnd av))))))))
+
 (defmacro defclass
   [^Symbol top-name & forms]
-  (let [top-name (symbol (munged (str top-name)))
+  (let [class-meta (meta top-name)
+        top-name (symbol (munged (str top-name)))
         cname (str (namespace-munge *ns*) "." top-name)
         int-cname (.replace cname \. \/)
 
-        obj-type (Type/getType ^Class Object)
-        ifn-desc (Type/getDescriptor IFn)
+        obj-type (to-type Object)
+        ifn-desc (descriptor IFn)
 
         node (ClassNode.)
 
@@ -67,13 +136,14 @@
     (.visit node
             Opcodes/V1_5
             (+ Opcodes/ACC_PUBLIC
-               Opcodes/ACC_SUPER)
+               Opcodes/ACC_SUPER
+               (if (get :final class-meta) Opcodes/ACC_FINAL 0))
             int-cname
             nil
             (.getInternalName obj-type)
             (make-array String 0))
 
-    ;; TODO annotations
+    (add-annotations node class-meta)
 
     (.visitSource node *file* *file*)
 
@@ -92,19 +162,20 @@
 
           :field (.add (.-fields node)
                        (let [field-symbol (first form-next)
-                             metadata (meta field-symbol)
+                             metadata (merge (meta field-symbol) (meta form))
                              field-name (munged (str field-symbol))]
-                         (FieldNode. (+ Opcodes/ACC_PUBLIC
-                                        (if (get metadata :static) Opcodes/ACC_STATIC 0)
-                                        (if (get metadata :final) Opcodes/ACC_FINAL 0))
-                                     field-name
-                                     (Type/getDescriptor (get-type-hint field-symbol))
-                                     nil                    ;; TODO generics
-                                     (when (> (count form) 2)
-                                       (eval (last form))))))
+                         (doto (FieldNode. (+ Opcodes/ACC_PUBLIC
+                                              (if (get metadata :static) Opcodes/ACC_STATIC 0)
+                                              (if (get metadata :final) Opcodes/ACC_FINAL 0))
+                                           field-name
+                                           (descriptor (get-type-hint field-symbol))
+                                           nil              ;; TODO generics
+                                           (when (> (count form) 2)
+                                             (eval (last form))))
+                           (add-annotations metadata))))
 
           :method (let [method-symbol (first form-next)
-                        metadata (meta method-symbol)
+                        metadata (merge (meta method-symbol) (meta form))
                         ret-class (tag-class (get (meta method-symbol) :tag 'void))
                         params (second form-next)
                         p-classes (map get-type-hint params)
@@ -117,9 +188,9 @@
                                                     (if static Opcodes/ACC_STATIC 0)
                                                     (if (get metadata :final) Opcodes/ACC_FINAL 0))
                                                  method-name
-                                                 (Type/getMethodDescriptor (Type/getType ^Class ret-class)
+                                                 (Type/getMethodDescriptor (to-type ret-class)
                                                                            (into-array Type (map #(-> ^Class (get-type-hint %)
-                                                                                                      (Type/getType)) params)))
+                                                                                                      (to-type)) params)))
                                                  nil        ;; TODO generics
                                                  (make-array String 0))
 
@@ -155,7 +226,7 @@
 
                     ;; breaks with more than 19 arguments...
                     (dotimes [i (count p-classes)]
-                      (let [param-type (Type/getType ^Class (nth p-classes i))]
+                      (let [param-type (to-type (nth p-classes i))]
                         (.loadArg ga i)
                         (.valueOf ga param-type)))
 
@@ -175,16 +246,18 @@
                       (.add instructions (InsnNode. Opcodes/POP)))
 
                     (doto ga
-                      (.unbox (Type/getType ^Class ret-class))
+                      (.unbox (to-type ret-class))
                       (.returnValue))
 
                     (.add (.-methods node)
-                          method-node))
+                          method-node)
+
+                    (add-annotations method-node metadata))
 
           :constructor (let [params (second form)
                              p-types (map (fn [param]
                                             (-> ^Class (get-type-hint param)
-                                                (Type/getType)))
+                                                (to-type)))
                                           params)
                              method-desc (Type/getMethodDescriptor Type/VOID_TYPE
                                                                    (into-array Type p-types))
@@ -201,7 +274,9 @@
                            (.add (InsnNode. Opcodes/RETURN)))
 
                          (.add (.-methods node)
-                               method-node))
+                               method-node)
+
+                         (add-annotations method-node (meta form)))
 
           )))
 
@@ -217,14 +292,14 @@
                                                               :tag 'void))
                                     p-types (map (fn [param]
                                                    (-> ^Class (get-type-hint param)
-                                                       (Type/getType)))
+                                                       (to-type)))
                                                  params)]
                                 `(set! (. ~top-name
                                           ~(symbol (str method-prefix
                                                         (name name-symbol)
                                                         (extra-munged
                                                           (Type/getMethodDescriptor
-                                                            (Type/getType ^Class ret-class)
+                                                            (to-type ret-class)
                                                             (into-array Type p-types))))))
                                        ~(cons 'fn
                                               (cons (let [p-seq (map fn-hint-safe params)]
