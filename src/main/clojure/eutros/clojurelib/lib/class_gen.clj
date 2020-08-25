@@ -6,10 +6,11 @@
            (org.objectweb.asm ClassWriter Opcodes Type AnnotationVisitor)
            (org.objectweb.asm.tree ClassNode FieldNode MethodNode VarInsnNode
                                    FieldInsnNode MethodInsnNode InsnNode)
-           (clojure.lang IFn Symbol RT)
+           (clojure.lang IFn Symbol RT Compiler$LocalBinding)
            (org.objectweb.asm.commons GeneratorAdapter)
            (java.lang.annotation Annotation Retention RetentionPolicy)
-           (java.lang.reflect Modifier))
+           (java.lang.reflect Modifier Field)
+           (java.lang.invoke MethodHandles MethodType MethodHandle MethodHandles$Lookup))
   (:use eutros.clojurelib.lib.core
         eutros.clojurelib.lib.type-hints))
 
@@ -406,3 +407,116 @@
                    ~top-name)]
       (load-tree node)
       ret)))
+
+(def ^Field allowed-modes-field
+  (doto (.getDeclaredField MethodHandles$Lookup "allowedModes")
+    (.setAccessible true)))
+
+(defn make-trusted [^MethodHandle handle]
+  (.set allowed-modes-field handle (int -1))
+  handle)
+
+(defn handle-in [^Class c]
+  (-> (MethodHandles/lookup)
+      (.in c)
+      (make-trusted)))
+
+(defn get-this-class [env]
+  (.getJavaClass ^Compiler$LocalBinding (env 'this)))
+
+(defn handle-invoker
+  [handle args metadata]
+  (with-meta `(.invokeWithArguments ^MethodHandle (deref ~(intern *ns* (gensym "handle") handle))
+                                    ^objects (into-array ~args))
+             metadata))
+
+(defmacro call-super
+  [method & args]
+  (let [this-class (get-this-class &env)
+        metadata (merge (meta &form)
+                        (meta method))]
+    (handle-invoker (-> (handle-in this-class)
+                        (.findSpecial (.getSuperclass this-class)
+                                      (str method)
+                                      (MethodType/methodType (hint-from metadata)
+                                                             (into-array Class
+                                                                         (map get-type-hint args)))
+                                      this-class))
+                    `(cons ~'this ~args)
+                    metadata)))
+
+(defmacro call-protected
+  [method & args]
+  (let [this-class (get-this-class &env)
+        metadata (merge (meta &form)
+                        (meta method))]
+    (handle-invoker (-> (handle-in this-class)
+                        (.findVirtual this-class
+                                      (str method)
+                                      (MethodType/methodType (hint-from metadata)
+                                                             (into-array Class
+                                                                         (map get-type-hint args)))))
+                    `(cons ~'this ~args)
+                    metadata)))
+
+(defmacro call-protected-static
+  [method & args]
+  (let [this-class (get-this-class &env)
+        metadata (merge (meta &form)
+                        (meta method))]
+    (handle-invoker (-> (handle-in this-class)
+                        (.findStatic this-class
+                                     (str method)
+                                     (MethodType/methodType (hint-from metadata)
+                                                            (into-array Class
+                                                                        (map get-type-hint args)))))
+                    args
+                    metadata)))
+
+(defmacro get-protected
+  [field]
+  (let [this-class (get-this-class &env)
+        metadata (merge (meta &form)
+                        (meta field))]
+    (handle-invoker (-> (handle-in this-class)
+                        (.findGetter this-class
+                                     (str field)
+                                     (hint-from metadata)))
+                    []
+                    metadata)))
+
+(defmacro set-protected
+  [field val]
+  (let [this-class (get-this-class &env)
+        metadata (merge (meta &form)
+                        (meta field))]
+    (handle-invoker (-> (handle-in this-class)
+                        (.findSetter this-class
+                                     (str field)
+                                     (hint-from metadata)))
+                    [val]
+                    metadata)))
+
+(defmacro get-protected-static
+  [field]
+  (let [this-class (get-this-class &env)
+        metadata (merge (meta &form)
+                        (meta field))]
+    (handle-invoker (-> (handle-in this-class)
+                        (.findStaticGetter this-class
+                                           (str field)
+                                           (hint-from metadata)))
+                    []
+                    metadata)))
+
+(defmacro set-protected-static
+  [field val]
+  (let [this-class (get-this-class &env)
+        metadata (merge (meta &form)
+                        (meta field))]
+    (handle-invoker (-> (handle-in this-class)
+                        (.findStaticSetter this-class
+                                           (str field)
+                                           (hint-from metadata)))
+                    [val]
+                    metadata)))

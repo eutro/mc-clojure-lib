@@ -1,5 +1,6 @@
 (ns eutros.clojurelib.lib.type-hints
-  (:import clojure.lang.Compiler$HostExpr))
+  (:import clojure.lang.Compiler$HostExpr
+           (java.lang.reflect Array)))
 
 (defn- prim-class
   [sym]
@@ -31,10 +32,13 @@
           (prim-class tag))
         (tag-to-class tag))))
 
+(defn hint-from
+  ^Class [metadata]
+  (tag-class (get metadata :tag)))
+
 (defn get-type-hint
-  [imeta]
-  (tag-class
-    (get (meta imeta) :tag)))
+  ^Class [imeta]
+  (hint-from (meta imeta)))
 
 (defn fn-hint-safe
   [sym]
@@ -46,3 +50,12 @@
                  (assoc (meta sym)
                    :tag nil))
       sym)))
+
+(defn array-hint
+  [sym]
+  (as-> (meta sym) $
+        (assoc $
+          :tag (-> (get-type-hint sym)
+                   (Array/newInstance 0)
+                   (.getClass)))
+        (with-meta sym $)))
