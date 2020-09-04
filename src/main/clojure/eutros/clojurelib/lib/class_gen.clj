@@ -9,7 +9,7 @@
            (clojure.lang IFn Symbol RT Compiler$LocalBinding)
            (org.objectweb.asm.commons GeneratorAdapter)
            (java.lang.annotation Annotation Retention RetentionPolicy)
-           (java.lang.reflect Modifier Field Array)
+           (java.lang.reflect Modifier Field)
            (java.lang.invoke MethodHandles MethodType MethodHandle MethodHandles$Lookup))
   (:use eutros.clojurelib.lib.core
         eutros.clojurelib.lib.type-hints))
@@ -19,7 +19,7 @@
   (when *class-dump-location*
     (let [file (File. (File. ^String *class-dump-location*)
                       (str (.replace name \. \/) ".class"))]
-      (.mkdirs file)
+      (.mkdirs (.getParentFile file))
       (with-open [fos (FileOutputStream. file)
                   dos (DataOutputStream. fos)]
         (.write dos bytes))))
