@@ -491,7 +491,7 @@
                         (.findGetter this-class
                                      (munged field)
                                      (hint-from metadata)))
-                    []
+                    ['this]
                     metadata)))
 
 (defmacro set-protected
@@ -503,7 +503,7 @@
                         (.findSetter this-class
                                      (munged field)
                                      (hint-from metadata)))
-                    [val]
+                    ['this val]
                     metadata)))
 
 (defmacro get-protected-static
