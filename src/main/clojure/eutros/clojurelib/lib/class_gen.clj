@@ -9,7 +9,7 @@
            (clojure.lang IFn Symbol RT Compiler$LocalBinding)
            (org.objectweb.asm.commons GeneratorAdapter)
            (java.lang.annotation Annotation Retention RetentionPolicy)
-           (java.lang.reflect Modifier Field)
+           (java.lang.reflect Modifier Field Array)
            (java.lang.invoke MethodHandles MethodType MethodHandle MethodHandles$Lookup))
   (:use eutros.clojurelib.lib.core
         eutros.clojurelib.lib.type-hints))
@@ -433,10 +433,14 @@
     (assert this-binding "'this is unbound!")
     (.getJavaClass ^Compiler$LocalBinding this-binding)))
 
+(def OBJ_ARRAY_CLASS
+  (.getClass (make-array Object 0)))
+
 (defn handle-invoker
   [handle args metadata]
   (with-meta `(.invokeWithArguments ^MethodHandle (deref ~(intern *ns* (gensym "handle") handle))
-                                    (into-array ~args))
+                                    ~(with-meta `(into-array Object ~args)
+                                                {:tag OBJ_ARRAY_CLASS}))
              metadata))
 
 (defmacro call-super
