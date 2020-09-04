@@ -18,7 +18,7 @@
   [^String name ^bytes bytes super interfaces]
   (when *class-dump-location*
     (with-open [fos (FileOutputStream. (File. (File. ^String *class-dump-location*)
-                                              name))
+                                              (str (.replace name \. \/) ".class")))
                 dos (DataOutputStream. fos)]
       (.write dos bytes)))
   (when *compile-files*

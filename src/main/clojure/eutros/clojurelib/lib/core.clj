@@ -41,7 +41,7 @@
 
 (def ^:private RIPPED
   ^{:doc "Sentinel value for forms that have been ripped."}
-  (Object.))
+  '__RIPPED_FORM)
 
 (defn rip [form]
   ^{:doc
@@ -50,8 +50,7 @@
     Omits any forms that are equal to RIPPED,
     i.e. they have been ripped out by the other
     data readers in this namespace."}
-  (let [ripped-forms (filterv (partial identical?
-                                       RIPPED)
+  (let [ripped-forms (filterv (partial not= RIPPED)
                               form)]
     (if (list? form)
       (apply list ripped-forms)
