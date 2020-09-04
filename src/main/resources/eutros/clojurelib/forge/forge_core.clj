@@ -7,8 +7,7 @@
 (def IS_FORGE true)
 (def IS_FABRIC false)
 (def IS_CLIENT (.isClient FMLEnvironment/dist))
-(def MAPPINGS (if FMLEnvironment/production
-                :obf/srg :obf/mcp))
+(def MAPPINGS (keyword "obf" FMLEnvironment/naming))
 
 (.debug LOGGER
         (str "Loading on FORGE\n"
@@ -22,8 +21,8 @@
     (symbol (if (= MAPPINGS :obf/srg)
               srg-name
               (ObfuscationReflectionHelper/remapName
-                (case (first (str srg-name))
-                  \m INameMappingService$Domain/METHOD
-                  \f INameMappingService$Domain/FIELD
+                (case (second (str srg-name))
+                  \u INameMappingService$Domain/METHOD      ;; func
+                  \i INameMappingService$Domain/FIELD       ;; field
                   INameMappingService$Domain/CLASS)
                 (str srg-name))))))

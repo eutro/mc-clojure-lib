@@ -114,12 +114,12 @@
      (when (symbol? k)
        (when-let [c (resolve k)]
          (when (is-annotation? c)
-           (let [av (binding [*warn-on-reflection* false]   ;; this is known duck/reflective as no common base of ASM Visitors
-                      (if param-no
-                        (.visitParameterAnnotation visitor param-no (descriptor c)
-                                                   (is-runtime-annotation? c))
-                        (.visitAnnotation visitor (descriptor c)
-                                          (is-runtime-annotation? c))))]
+           (let [av                                         ;; this is known duck/reflective as no common base of ASM Visitors
+                 (if param-no
+                   (.visitParameterAnnotation visitor param-no (descriptor c)
+                                              (is-runtime-annotation? c))
+                   (.visitAnnotation visitor (descriptor c)
+                                     (is-runtime-annotation? c)))]
              (process-annotation av v)
              (.visitEnd av))))))))
 
