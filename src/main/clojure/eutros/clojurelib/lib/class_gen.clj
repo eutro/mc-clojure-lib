@@ -18,7 +18,7 @@
   [^String name ^bytes bytes super interfaces]
   (when *class-dump-location*
     (let [file (File. (File. ^String *class-dump-location*)
-                      (str (.replace name \. \/) ".class"))]
+                      (str (.replace name \. File/separatorChar) ".class"))]
       (.mkdirs (.getParentFile file))
       (with-open [fos (FileOutputStream. file)
                   dos (DataOutputStream. fos)]
