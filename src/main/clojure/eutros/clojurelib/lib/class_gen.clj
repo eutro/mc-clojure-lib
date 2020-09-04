@@ -433,14 +433,10 @@
     (assert this-binding "'this is unbound!")
     (.getJavaClass ^Compiler$LocalBinding this-binding)))
 
-(def OBJ_ARRAY_CLASS
-  (.getClass (make-array Object 0)))
-
 (defn handle-invoker
   [handle args metadata]
   (with-meta `(.invokeWithArguments ^MethodHandle (deref ~(intern *ns* (gensym "handle") handle))
-                                    ~(with-meta `(into-array Object ~args)
-                                                {:tag OBJ_ARRAY_CLASS}))
+                                    ^{:tag ~'objects} (into-array Object ~args))
              metadata))
 
 (defmacro call-super
