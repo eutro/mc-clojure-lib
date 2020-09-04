@@ -17,10 +17,12 @@
 (defn load-bytes
   [^String name ^bytes bytes super interfaces]
   (when *class-dump-location*
-    (with-open [fos (FileOutputStream. (File. (File. ^String *class-dump-location*)
-                                              (str (.replace name \. \/) ".class")))
-                dos (DataOutputStream. fos)]
-      (.write dos bytes)))
+    (let [file (File. (File. ^String *class-dump-location*)
+                      (str (.replace name \. \/) ".class"))]
+      (.mkdirs file)
+      (with-open [fos (FileOutputStream. file)
+                  dos (DataOutputStream. fos)]
+        (.write dos bytes))))
   (when *compile-files*
     (Compiler/writeClassFile (.replace name \. \/) bytes))
   (.defineClass ^DynamicClassLoader (deref Compiler/LOADER)
