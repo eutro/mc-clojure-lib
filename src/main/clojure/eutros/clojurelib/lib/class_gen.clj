@@ -213,7 +213,7 @@
 
                   :method (let [[method-symbol params & body] form-next
                                 metadata (merge (meta method-symbol) (meta form))
-                                ret-class (tag-class (get (meta method-symbol) :tag 'void))
+                                ret-class (hint-from metadata Void/TYPE)
                                 p-classes (map get-type-hint params)
                                 static (get metadata :static)
                                 abstract (get metadata :abstract)
@@ -447,7 +447,7 @@
     (handle-invoker (-> (handle-in this-class)
                         (.findSpecial (.getSuperclass this-class)
                                       (munged method)
-                                      (MethodType/methodType (hint-from metadata)
+                                      (MethodType/methodType (hint-from metadata Void/TYPE)
                                                              (into-array Class
                                                                          (map get-type-hint args)))
                                       this-class))
@@ -462,7 +462,7 @@
     (handle-invoker (-> (handle-in this-class)
                         (.findVirtual this-class
                                       (munged method)
-                                      (MethodType/methodType (hint-from metadata)
+                                      (MethodType/methodType (hint-from metadata Void/TYPE)
                                                              (into-array Class
                                                                          (map get-type-hint args)))))
                     (apply vector 'this args)
@@ -476,7 +476,7 @@
     (handle-invoker (-> (handle-in this-class)
                         (.findStatic this-class
                                      (munged method)
-                                     (MethodType/methodType (hint-from metadata)
+                                     (MethodType/methodType (hint-from metadata Void/TYPE)
                                                             (into-array Class
                                                                         (map get-type-hint args)))))
                     (apply vector args)

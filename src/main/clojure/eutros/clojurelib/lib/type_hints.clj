@@ -27,18 +27,20 @@
 (defn tag-class
   [tag]
   (if (nil? tag)
-    Object
+    Void/TYPE
     (or (if (symbol? tag)
           (prim-class tag))
         (tag-to-class tag))))
 
-(defn hint-from
-  ^Class [metadata]
-  (tag-class (get metadata :tag)))
+(defn ^Class hint-from
+  ([metadata] (hint-from metadata Object))
+  ([metadata fallback]
+   (tag-class (get metadata :tag fallback))))
 
 (defn get-type-hint
-  ^Class [imeta]
-  (hint-from (meta imeta)))
+  ([imeta] (get-type-hint imeta Object))
+  ([imeta fallback]
+   (hint-from (meta imeta) fallback)))
 
 (defn fn-hint-safe
   [sym]
