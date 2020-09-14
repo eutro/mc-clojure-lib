@@ -23,13 +23,19 @@
                       form)]
     (symbol (if (= MAPPINGS :obf/itm)
               itm-name
-              (case (first (str itm-name))
-                \m (.mapMethodName "intermediary"
-                                   (get (meta form) :obf/owner)
+              (case (-> (.matcher #"\.?(\w+_\d+)$" (str itm-name))
+                        (doto .find)
+                        (.group 1)
+                        first)
+                \m (.mapMethodName mapping-resolver
+                                   "intermediary"
+                                   (str (get (meta form) :obf/owner))
                                    (str itm-name)
-                                   (get (meta form) :obf/desc))
-                \f (.mapFieldName "intermediary"
-                                  (get (meta form) :obf/owner)
+                                   (str (get (meta form) :obf/desc)))
+                \f (.mapFieldName mapping-resolver
+                                  "intermediary"
+                                  (str (get (meta form) :obf/owner))
                                   (str itm-name)
-                                  (get (meta form) :obf/desc))
-                \c (.mapClassName "intermediary" (str itm-name)))))))
+                                  (str (get (meta form) :obf/desc)))
+                \c (.mapClassName mapping-resolver
+                                  "intermediary" (str itm-name)))))))
