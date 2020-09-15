@@ -10,7 +10,7 @@
 
   "entrypoints": {
     "main": [
-      "eutros.clojurelib.fabric.clojure_lib_init_fabric"
+      "eutros.clojurelib.fabric.CljLibInitFabric"
     ]
   }
 }
