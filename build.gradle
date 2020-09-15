@@ -106,6 +106,9 @@ clojure {
     builds {
         main {
             aotAll()
+            compiler {
+                setDirectLinking(true)
+            }
         }
     }
 }

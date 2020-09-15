@@ -1,7 +1,10 @@
 (in-ns 'eutros.clojurelib.lib.core)
 
 (import net.fabricmc.loader.api.FabricLoader
-        net.fabricmc.api.EnvType)
+        net.fabricmc.loader.api.MappingResolver
+        net.fabricmc.api.EnvType
+        java.util.regex.Matcher
+        java.util.regex.Pattern)
 
 (def IS_FORGE false)
 (def IS_FABRIC true)
@@ -10,7 +13,7 @@
 (def MAPPINGS (if (.isDevelopmentEnvironment (FabricLoader/getInstance))
                 :obf/yrn :obf/itm))
 
-(def ^:private mapping-resolver (.getMappingResolver (FabricLoader/getInstance)))
+(def ^:private ^MappingResolver mapping-resolver (.getMappingResolver (FabricLoader/getInstance)))
 
 (.debug LOGGER
         (str "Loading on FABRIC\n"

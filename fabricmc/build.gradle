@@ -1,0 +1,16 @@
+// required to get Fabric on the classpath.
+plugins {
+    id 'fabric-loom' version '0.4-SNAPSHOT'
+}
+
+group '_'
+version '1'
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+}
+
+// yep
+rootProject.sourceSets.main.compileClasspath += project.sourceSets.main.compileClasspath
