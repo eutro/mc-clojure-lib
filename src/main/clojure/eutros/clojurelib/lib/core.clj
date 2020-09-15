@@ -96,7 +96,6 @@
      'rip/rip #'eutros.clojurelib.lib.core/rip
      'rip/client #'eutros.clojurelib.lib.core/rip-client
      'rip/forge #'eutros.clojurelib.lib.core/rip-forge
-     'rip/fabric #'eutros.clojurelib.lib.core/rip-fabric
-     'hint/array #'eutros.clojurelib.lib.type-hints/array-hint))
+     'rip/fabric #'eutros.clojurelib.lib.core/rip-fabric))
 
 (def ^:dynamic *class-dump-location* (System/getProperty "eutros.clojurelib.dump_classes"))

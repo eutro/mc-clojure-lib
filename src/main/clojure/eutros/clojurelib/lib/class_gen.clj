@@ -9,8 +9,9 @@
            (clojure.lang IFn Symbol RT Compiler$LocalBinding)
            (org.objectweb.asm.commons GeneratorAdapter)
            (java.lang.annotation Annotation Retention RetentionPolicy)
-           (java.lang.reflect Modifier Field)
-           (java.lang.invoke MethodHandles MethodType MethodHandle MethodHandles$Lookup))
+           (java.lang.reflect Modifier Field Constructor)
+           (java.lang.invoke MethodHandles MethodType MethodHandle MethodHandles$Lookup)
+           (java.util List))
   (:use eutros.clojurelib.lib.core
         eutros.clojurelib.lib.type-hints))
 
@@ -49,7 +50,7 @@
               (-> (.superName node) class-from-internal)
               (into-array Class (map class-from-internal (.interfaces node)))))
 
-(defn- ^String munged [obj]
+(defn- munged ^String [obj]
   (Compiler/munge (str obj)))
 
 (defn- extra-munged [obj]
@@ -126,7 +127,7 @@
              (.visitEnd av))))))))
 
 (def OBJECT_DESC (descriptor Object))
-(def IFN_TYPE (to-type IFn))
+(def ^Type IFN_TYPE (to-type IFn))
 (def IFN_DESC (descriptor IFn))
 
 (defn- ^MethodInsnNode invoke-ifn-node [param-count]
@@ -159,7 +160,7 @@
         cname (str (namespace-munge *ns*) "." top-name)
         int-cname (.replace cname \. \/)
 
-        obj-type (to-type Object)
+        obj-type ^Type (to-type Object)
 
         node (ClassNode.)
 
@@ -301,7 +302,7 @@
                                                               constructor-desc
                                                               nil (make-array String 0))
 
-                                     super-class (class-from-internal (.-superName node))
+                                     super-class ^Class (class-from-internal (.-superName node))
 
                                      [super-call body] (if (empty? forms)
                                                          [(list 'super params) []]
@@ -341,7 +342,7 @@
                                      (let [ctr (.getDeclaredConstructor
                                                  super-class
                                                  (into-array Class super-call-classes))]
-                                       (assert (-> (.getModifiers ctr)
+                                       (assert (-> (.getModifiers ^Constructor ctr)
                                                    (Modifier/isPrivate)
                                                    not)
                                                "Constructor is private!")
@@ -437,8 +438,8 @@
 
 (defn handle-invoker
   [handle args metadata]
-  (with-meta `(.invokeWithArguments ^MethodHandle (deref ~(intern *ns* (gensym "handle") handle))
-                                    ^{:tag ~'objects} (into-array Object ~args))
+  (with-meta `(.invokeWithArguments ^MethodHandle @~(intern *ns* (gensym "handle") handle)
+                                    ^List ~args)
              metadata))
 
 (defmacro call-super
@@ -450,43 +451,43 @@
                         (.findSpecial (.getSuperclass this-class)
                                       (munged method)
                                       (MethodType/methodType (hint-from metadata Void/TYPE)
-                                                             (into-array Class
-                                                                         (map get-type-hint args)))
+                                                             ^List
+                                                             (map get-type-hint args))
                                       this-class))
                     (apply vector 'this args)
                     metadata)))
 
 (defmacro call-protected
   [method & args]
-  (let [this-class (get-this-class &env)
+  (let [this-class ^Class (get-this-class &env)
         metadata (merge (meta &form)
                         (meta method))]
     (handle-invoker (-> (handle-in this-class)
                         (.findVirtual this-class
                                       (munged method)
                                       (MethodType/methodType (hint-from metadata Void/TYPE)
-                                                             (into-array Class
-                                                                         (map get-type-hint args)))))
+                                                             ^List
+                                                             (map get-type-hint args))))
                     (apply vector 'this args)
                     metadata)))
 
 (defmacro call-protected-static
   [c method & args]
-  (let [this-class (eval c)
+  (let [this-class ^Class (eval c)
         metadata (merge (meta &form)
                         (meta method))]
     (handle-invoker (-> (handle-in this-class)
                         (.findStatic this-class
                                      (munged method)
                                      (MethodType/methodType (hint-from metadata Void/TYPE)
-                                                            (into-array Class
-                                                                        (map get-type-hint args)))))
+                                                            ^List
+                                                            (map get-type-hint args))))
                     (apply vector args)
                     metadata)))
 
 (defmacro get-protected
   [field]
-  (let [this-class (get-this-class &env)
+  (let [this-class ^Class (get-this-class &env)
         metadata (merge (meta &form)
                         (meta field))]
     (handle-invoker (-> (handle-in this-class)
@@ -498,7 +499,7 @@
 
 (defmacro set-protected
   [field val]
-  (let [this-class (get-this-class &env)
+  (let [this-class ^Class (get-this-class &env)
         metadata (merge (meta &form)
                         (meta field))]
     (handle-invoker (-> (handle-in this-class)
@@ -510,7 +511,7 @@
 
 (defmacro get-protected-static
   [c field]
-  (let [this-class (eval c)
+  (let [this-class ^Class (eval c)
         metadata (merge (meta &form)
                         (meta field))]
     (handle-invoker (-> (handle-in this-class)
@@ -522,7 +523,7 @@
 
 (defmacro set-protected-static
   [c field val]
-  (let [this-class (eval c)
+  (let [this-class ^Class (eval c)
         metadata (merge (meta &form)
                         (meta field))]
     (handle-invoker (-> (handle-in this-class)
