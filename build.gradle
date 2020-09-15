@@ -16,6 +16,7 @@ apply plugin: 'net.minecraftforge.gradle'
 // Only edit below this line, the above code adds and enables the necessary things for Forge to be setup.
 apply plugin: 'eclipse'
 apply plugin: 'maven-publish'
+apply plugin: 'maven'
 
 version = "${clojure_ver}_${major}.${minor}.${patch}"
 group = 'eutros.clojurelib' // http://maven.apache.org/guides/mini/guide-naming-conventions.html
@@ -100,6 +101,7 @@ jar {
             exclude 'META-INF', 'META-INF/**'
         }
     }
+    archiveClassifier.set('all')
 }
 
 clojure {
@@ -137,10 +139,43 @@ processResources {
     }
 }
 
+task cljlessJar(type: Jar) {
+    from sourceSets.main.output
+}
+
+task sourceJar(type: Jar) {
+    archiveClassifier.set('sources')
+    from sourceSets.main.allSource
+}
+
 publishing {
     publications {
         maven(MavenPublication) {
             from components.java
+            artifact sourceJar
+            artifact cljlessJar
+            pom.withXml {
+                // eh
+                def el = asElement() as org.w3c.dom.Element;
+                def dependencies = el.getElementsByTagName("dependencies").item(0)
+                dependencies.getChildNodes().each {
+                    for (node in it.childNodes) {
+                        if (node.properties["tagName"] == "groupId") {
+                            if (node.properties["textContent"] == "net.minecraftforge") {
+                                dependencies.removeChild(it)
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            name = "Clojars"
+            url = "https://clojars.org/repo"
         }
     }
 }
