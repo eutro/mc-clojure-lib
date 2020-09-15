@@ -7,5 +7,5 @@
 
 (gen-class
   :name ^{Mod "clojurelib"}
-  eutros.clojurelib.forge.clojure-lib-init-forge
+  eutros.clojurelib.forge.CljLibInitForge
   :main false)

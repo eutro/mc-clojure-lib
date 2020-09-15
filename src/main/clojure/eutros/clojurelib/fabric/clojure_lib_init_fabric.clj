@@ -5,7 +5,7 @@
   (load "/eutros/clojurelib/fabric/fabric_core"))
 
 (gen-class
-  :name eutros.clojurelib.fabric.clojure-lib-init-fabric
+  :name eutros.clojurelib.fabric.CljLibInitFabric
   :implements [net.fabricmc.api.ModInitializer]
   :main false)
 
