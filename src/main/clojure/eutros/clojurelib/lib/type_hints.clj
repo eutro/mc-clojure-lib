@@ -54,10 +54,10 @@
       sym)))
 
 (defn array-hint
-  [sym]
-  (as-> (meta sym) $
+  [form]
+  (as-> (meta form) $
         (assoc $
-          :tag (-> (get-type-hint sym)
+          :tag (-> ^Class (get-type-hint form)
                    (Array/newInstance 0)
                    (.getClass)))
-        (with-meta sym $)))
+        (with-meta form $)))
