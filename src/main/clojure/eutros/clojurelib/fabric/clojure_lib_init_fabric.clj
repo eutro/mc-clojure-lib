@@ -9,6 +9,6 @@
   :implements [net.fabricmc.api.ModInitializer]
   :main false)
 
-(defn -onInitialize []
+(defn -onInitialize [_]
   ; NO-OP
   )
